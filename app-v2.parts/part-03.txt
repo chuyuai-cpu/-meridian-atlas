@@ -1,0 +1,120 @@
+ selectedChannelGlowMaterial = new THREE.MeshBasicMaterial({ color: '#d6fff0', transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
+let selectedChannelGlow = null;
+
+const particles = [];
+for (let i = 0; i < 30; i += 1) {
+  const material = new THREE.MeshBasicMaterial({ color: '#caffea', transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.032 + (i % 4) * 0.004, 12, 8), material);
+  mesh.renderOrder = 10;
+  particleGroup.add(mesh);
+  particles.push(mesh);
+}
+
+function updateSelectedHalo() {
+  if (selectedPointHalo) highlightGroup.remove(selectedPointHalo);
+  const point = activePoint();
+  if (!point) return;
+  const channel = activeChannel();
+  const position = state.selectedSide === 'right' && channel.bilateral ? mirror(point.position) : point.position;
+  selectedPointHalo = new THREE.Mesh(
+    new THREE.RingGeometry(0.085, 0.105, 32),
+    new THREE.MeshBasicMaterial({ color: pointColor(point), transparent: true, opacity: 0.82, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  selectedPointHalo.position.set(...position);
+  selectedPointHalo.lookAt(camera.position);
+  selectedPointHalo.renderOrder = 11;
+  highlightGroup.add(selectedPointHalo);
+}
+
+function updateChannelPresentation() {
+  const selected = activeChannel();
+  channelObjects.forEach(({ channel, group, internal, entries }) => {
+    const isSelected = channel.code === selected.code;
+    group.visible = state.layers.meridians && (state.showAllChannels || isSelected);
+    internal.visible = state.layers.internal && (state.showAllChannels || isSelected);
+    entries.forEach(({ mesh, material }) => {
+      material.opacity = isSelected ? 0.94 : (channel.polarity === 'yang' ? 0.24 : 0.13);
+      mesh.scale.setScalar(isSelected ? 1.7 : 1);
+    });
+  });
+  pointObjects.forEach((mesh) => {
+    const isSelected = mesh.userData.channel.code === selected.code;
+    mesh.visible = state.layers.points && (isSelected || (state.showAllChannels && state.view === 'point'));
+    mesh.material.opacity = isSelected ? 0.98 : 0.30;
+    mesh.scale.setScalar(isSelected ? 1.15 : 0.72);
+  });
+  traceMaterial.color.set(selected.color);
+  particles.forEach((particle) => particle.material.color.set(selected.color));
+  updateSelectedHalo();
+}
+
+function updateLayers() {
+  skinGroup.visible = state.layers.skin;
+  skeletonGroup.visible = state.layers.skeleton;
+  organGroup.visible = state.layers.organs;
+  channelGroup.visible = state.layers.meridians;
+  pointGroup.visible = state.layers.points;
+  internalGroup.visible = state.layers.internal;
+  skinMaterial.opacity = state.skinOpacity;
+  skinDarkMaterial.opacity = state.skinOpacity;
+  skinMaterial.depthWrite = state.skinOpacity > 0.55;
+  skinDarkMaterial.depthWrite = state.skinOpacity > 0.55;
+  organObjects.forEach((group, id) => {
+    group.visible = state.layers.organs && state.organVisibility[id] !== false;
+  });
+  updateChannelPresentation();
+}
+
+function focusView(view) {
+  if (view === 'front') { state.yaw = 0; state.pitch = 0.02; }
+  if (view === 'back') { state.yaw = Math.PI; state.pitch = 0.02; }
+  if (view === 'left') { state.yaw = -Math.PI / 2; state.pitch = 0.02; }
+  if (view === 'right') { state.yaw = Math.PI / 2; state.pitch = 0.02; }
+  state.distance = 8.3;
+  saveState();
+}
+function focusOrgan(id) {
+  const organ = DATA.organs.find((item) => item.id === id);
+  if (!organ) return;
+  cameraTarget.set(...organ.position);
+  state.distance = 4.8;
+  state.yaw = 0;
+  state.pitch = 0.08;
+}
+
+function renderChannelList(query = '') {
+  const list = $('#meridianList');
+  list.innerHTML = '';
+  const normalized = query.trim().toLowerCase();
+  if (state.view === 'animation') {
+    [
+      ['particles','粒子流动','多粒子沿当前经脉连续运行'],
+      ['trace','逐段寻迹','按循行进度逐段点亮路径'],
+      ['pulse','脉冲高光','路径与穴位产生周期性呼吸光']
+    ].forEach(([mode, name, description]) => {
+      const button = document.createElement('button');
+      button.className = `meridian-item ${state.mode === mode ? 'active' : ''}`;
+      button.innerHTML = `<span class="meridian-code">${mode === 'particles' ? '粒' : mode === 'trace' ? '迹' : '脉'}</span><div><strong>${name}</strong><small>${description}</small></div><span class="meridian-arrow">›</span>`;
+      button.onclick = () => { state.mode = mode; renderUI(); saveState(); };
+      list.append(button);
+    });
+    return;
+  }
+  const source = state.view === 'point' || state.view === 'favorite' ? structuredPoints : DATA.channels;
+  const filtered = source.filter((item) => {
+    if (state.view === 'favorite' && !favorites.has(item.code)) return false;
+    if (item.points) {
+      if (state.filter === 'primary' && item.group !== 'primary') return false;
+      if (['yin','yang'].includes(state.filter) && item.polarity !== state.filter) return false;
+      if (state.filter === 'extra' && item.group !== 'extra') return false;
+    }
+    const text = `${item.code}${item.name}${item.english || ''}${item.channelName || ''}${(item.categories || []).join('')}`.toLowerCase();
+    return !normalized || text.includes(normalized);
+  });
+  filtered.forEach((item) => {
+    const isChannel = !!item.points;
+    const button = document.createElement('button');
+    const selected = isChannel ? item.code === state.channelCode : item.code === state.pointCode;
+    button.className = `meridian-item ${selected ? 'active' : ''}`;
+    const subtitle = isChannel
+      ? `${item.group === 

@@ -1,0 +1,114 @@
+alize());
+  return direction.length();
+}
+function limb(start, end, radiusTop, radiusBottom, material, parent, radialSegments = 24) {
+  const length = vector(end).distanceTo(vector(start));
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, length, radialSegments, 3, false), material);
+  alignBetween(mesh, start, end);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+function ellipsoid(position, scale, material, parent, segments = 32) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, segments, Math.max(16, segments / 2)), material);
+  mesh.position.set(...position);
+  mesh.scale.set(...scale);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+function joint(position, radius, material, parent) {
+  return ellipsoid(position, [radius, radius, radius], material, parent, 24);
+}
+
+function buildHuman() {
+  ellipsoid([0, 2.70, 0], [0.34, 0.43, 0.32], skinMaterial, skinGroup, 40);
+  ellipsoid([0, 2.42, 0.025], [0.29, 0.20, 0.27], skinMaterial, skinGroup, 32);
+  limb([0, 2.36, 0], [0, 2.08, 0], 0.17, 0.19, skinMaterial, skinGroup);
+  ellipsoid([0, 1.36, 0], [0.74, 0.84, 0.40], skinMaterial, skinGroup, 48);
+  ellipsoid([0, 0.58, 0], [0.57, 0.70, 0.35], skinMaterial, skinGroup, 40);
+  ellipsoid([0, -0.40, 0], [0.58, 0.44, 0.37], skinDarkMaterial, skinGroup, 40);
+  limb([0, 1.95, 0], [0, 0.82, 0], 0.45, 0.54, skinMaterial, skinGroup, 32);
+  limb([0, 0.80, 0], [0, -0.28, 0], 0.38, 0.48, skinMaterial, skinGroup, 32);
+
+  for (const side of [-1, 1]) {
+    const shoulder = [side * 0.68, 1.66, 0];
+    const elbow = [side * 1.18, 0.80, -0.01];
+    const wrist = [side * 1.57, 0.02, 0.02];
+    const hand = [side * 1.73, -0.26, 0.05];
+    joint(shoulder, 0.25, skinMaterial, skinGroup);
+    limb(shoulder, elbow, 0.20, 0.25, skinMaterial, skinGroup);
+    joint(elbow, 0.18, skinMaterial, skinGroup);
+    limb(elbow, wrist, 0.13, 0.18, skinMaterial, skinGroup);
+    ellipsoid(hand, [0.13, 0.29, 0.095], skinMaterial, skinGroup, 24).rotation.z = side * -0.42;
+    for (let finger = 0; finger < 5; finger += 1) {
+      const spread = (finger - 2) * 0.035;
+      limb([side * (1.72 + Math.abs(spread)), -0.36 + finger * 0.005, 0.05 + spread], [side * (1.79 + Math.abs(spread)), -0.50 + finger * 0.008, 0.05 + spread], 0.018, 0.023, skinMaterial, skinGroup, 10);
+    }
+
+    const hip = [side * 0.36, -0.53, 0];
+    const knee = [side * 0.43, -1.75, -0.01];
+    const ankle = [side * 0.36, -2.92, 0];
+    joint(hip, 0.34, skinMaterial, skinGroup);
+    limb(hip, knee, 0.28, 0.34, skinMaterial, skinGroup, 32);
+    joint(knee, 0.23, skinMaterial, skinGroup);
+    limb(knee, ankle, 0.18, 0.25, skinMaterial, skinGroup, 32);
+    joint(ankle, 0.15, skinMaterial, skinGroup);
+    const foot = ellipsoid([side * 0.38, -3.11, 0.18], [0.19, 0.14, 0.46], skinMaterial, skinGroup, 28);
+    foot.rotation.x = -0.08;
+  }
+
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.18, 18), skinDarkMaterial);
+  nose.position.set(0, 2.68, 0.34);
+  nose.rotation.x = Math.PI / 2;
+  skinGroup.add(nose);
+  for (const side of [-1, 1]) {
+    ellipsoid([side * 0.12, 2.78, 0.30], [0.032, 0.024, 0.018], faceDetailMaterial, skinGroup, 16);
+    ellipsoid([side * 0.35, 2.70, 0], [0.045, 0.10, 0.055], skinMaterial, skinGroup, 20);
+  }
+  limb([-0.10, 2.50, 0.28], [0.10, 2.50, 0.28], 0.015, 0.015, faceDetailMaterial, skinGroup, 10);
+
+  // Simplified skeleton layer
+  ellipsoid([0, 2.68, -0.01], [0.27, 0.35, 0.25], boneMaterial, skeletonGroup, 28);
+  limb([0, 2.26, 0], [0, -0.42, -0.02], 0.055, 0.065, boneMaterial, skeletonGroup, 16);
+  for (let i = 0; i < 8; i += 1) {
+    const rib = new THREE.Mesh(new THREE.TorusGeometry(0.38 + i * 0.025, 0.024, 10, 40), boneMaterial);
+    rib.position.set(0, 1.60 - i * 0.16, -0.02);
+    rib.scale.z = 0.62;
+    rib.rotation.x = Math.PI / 2;
+    skeletonGroup.add(rib);
+  }
+  for (const side of [-1, 1]) {
+    limb([side * 0.25, 1.72, 0], [side * 0.70, 1.62, 0], 0.035, 0.035, boneMaterial, skeletonGroup, 12);
+    limb([side * 0.68, 1.62, 0], [side * 1.18, 0.80, 0], 0.045, 0.055, boneMaterial, skeletonGroup, 12);
+    limb([side * 1.18, 0.80, 0], [side * 1.57, 0.02, 0], 0.035, 0.045, boneMaterial, skeletonGroup, 12);
+    limb([side * 0.23, -0.43, 0], [side * 0.43, -1.75, 0], 0.065, 0.085, boneMaterial, skeletonGroup, 14);
+    limb([side * 0.43, -1.75, 0], [side * 0.36, -2.92, 0], 0.045, 0.065, boneMaterial, skeletonGroup, 14);
+    joint([side * 0.43, -1.75, 0], 0.095, boneMaterial, skeletonGroup);
+  }
+  const pelvis = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.08, 12, 48), boneMaterial);
+  pelvis.position.set(0, -0.43, 0);
+  pelvis.rotation.x = Math.PI / 2;
+  pelvis.scale.y = 0.75;
+  skeletonGroup.add(pelvis);
+}
+buildHuman();
+
+const organObjects = new Map();
+function makeOrganMaterial(color, opacity = 0.88) {
+  return new THREE.MeshPhysicalMaterial({ color, roughness: 0.56, clearcoat: 0.16, transparent: true, opacity, depthWrite: opacity > 0.5, side: THREE.DoubleSide });
+}
+function buildOrgans() {
+  DATA.organs.forEach((organ) => {
+    const group = new THREE.Group();
+    group.name = organ.name;
+    group.userData = { type: 'organ', organ };
+    const material = makeOrganMaterial(organ.color, organ.region ? 0.16 : organ.shell ? 0.24 : 0.82);
+    if (organ.tube) {
+      const points = [];
+      for (let i = 0; i < 40; i += 1) {
+        const t = i / 39;
+        points.push(new THREE.Vector3(
+          Math.sin(t * Math.P

@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-  <meta name="theme-color" content="#0c1512" />
-  <meta name="description" content="基于真实标准数据的3D经络穴位教学可视化原型" />
-  <title>经络寻行 · 3D Meridian Atlas</title>
+  <meta name="theme-color" content="#08110e" />
+  <meta name="description" content="经络寻行 V2：十二正经、奇经八脉、穴位属性、交会提醒、脏器显隐与透视教学可视化" />
+  <title>经络寻行 V2 · Meridian Atlas</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -14,92 +14,143 @@
       <div class="brand-block">
         <div class="seal">经</div>
         <div>
-          <h1>经络寻行 <span>Meridian Atlas</span></h1>
-          <p>标准穴位数据 · 教学可视化 · 非诊疗工具</p>
+          <h1>经络寻行 <span>Meridian Atlas V2</span></h1>
+          <p>十二正经 · 奇经八脉 · 穴位属性 · 脏器透视</p>
         </div>
       </div>
       <nav class="top-nav" aria-label="主导航">
         <button class="nav-pill active" data-view="meridian">经络</button>
         <button class="nav-pill" data-view="point">穴位</button>
+        <button class="nav-pill" data-view="layers">模型图层</button>
         <button class="nav-pill" data-view="animation">动画模式</button>
         <button id="favoriteToggle" class="nav-pill">收藏 <span id="favoriteCount">0</span></button>
       </nav>
-      <div class="data-badge" title="位置名称参考 GB/T 12346-2021 与 WHO/WPRO 标准">
-        <span class="pulse-dot"></span> 数据已溯源
+      <div class="data-badge" title="名称与定位摘要参考 GB/T 12346-2021 与 WHO 标准">
+        <span class="pulse-dot"></span>
+        <span><b>V2</b> 数据已溯源</span>
       </div>
     </header>
 
     <main class="workspace">
-      <aside class="left-panel glass panel-scroll" aria-label="经络分类">
+      <aside class="left-panel glass panel-scroll" aria-label="经络与穴位分类">
         <div class="panel-title-row">
-          <div><p class="eyebrow">CHANNELS</p><h2>经络分类</h2></div>
+          <div><p class="eyebrow">ATLAS INDEX</p><h2 id="leftTitle">经络分类</h2></div>
           <button id="collapseLeft" class="icon-btn" aria-label="收起侧栏">‹</button>
         </div>
-        <div class="search-wrap"><span>⌕</span><input id="searchInput" type="search" placeholder="搜索经络 / 穴位 / 编码" autocomplete="off" /></div>
+        <div class="search-wrap"><span>⌕</span><input id="searchInput" type="search" placeholder="搜索经络 / 穴位 / 编码 / 属性" autocomplete="off" /></div>
         <div class="filter-row">
           <button class="filter-chip active" data-filter="all">全部</button>
+          <button class="filter-chip" data-filter="primary">十二正经</button>
           <button class="filter-chip" data-filter="yin">阴经</button>
           <button class="filter-chip" data-filter="yang">阳经</button>
           <button class="filter-chip" data-filter="extra">奇经</button>
         </div>
         <div id="meridianList" class="meridian-list"></div>
-        <div class="source-card"><div class="source-icon">典</div><div><strong>真实数据说明</strong><p>名称、编码与标准定位依据现行国标及 WHO 标准；3D 坐标是按人体比例映射的教学坐标。</p></div></div>
+        <div class="source-card version-card">
+          <div class="source-icon">V2</div>
+          <div>
+            <strong>20 条经脉路径</strong>
+            <p>十二正经 + 奇经八脉；361 经穴总量校验，当前结构化 129 个重点穴及特定穴属性。</p>
+          </div>
+        </div>
+        <div class="source-card">
+          <div class="source-icon">典</div>
+          <div><strong>标准与三维映射分离</strong><p>经穴名称、编码和标准定位摘要来源于标准资料；模型坐标、脏器形态和体内循行均为教学示意。</p></div>
+        </div>
       </aside>
 
-      <section id="stage" class="stage" aria-label="3D经络模型">
+      <section id="stage" class="stage" aria-label="三维经络人体模型">
         <canvas id="glCanvas"></canvas>
         <div id="fallback2d" class="fallback-2d" hidden>
-          <div class="fallback-head"><strong>已切换轻量降级渲染</strong><span>当前设备无法稳定使用 WebGL</span></div>
-          <svg id="fallbackSvg" viewBox="0 0 600 900" role="img" aria-label="二维经络示意图"></svg>
+          <div class="fallback-head"><strong>3D 模块未能启动</strong><span id="fallbackMessage">正在切换二维教学视图</span></div>
+          <svg viewBox="0 0 600 900" role="img" aria-label="二维人体经络降级示意">
+            <defs><linearGradient id="fallbackGlow" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#8de3bd"/><stop offset="1" stop-color="#2f7c67"/></linearGradient></defs>
+            <ellipse class="fallback-body" cx="300" cy="126" rx="60" ry="78"/>
+            <path class="fallback-body" d="M238 210 Q300 174 362 210 L385 450 Q300 480 215 450 Z"/>
+            <path class="fallback-limb" d="M240 230 L110 490 M360 230 L490 490 M260 445 L230 820 M340 445 L370 820"/>
+            <path class="fallback-path" d="M250 210 C190 300 150 400 120 500 M350 210 C410 300 450 400 480 500 M300 190 L300 790"/>
+          </svg>
         </div>
         <div class="stage-vignette"></div>
+
         <div class="stage-meta glass-min">
-          <div><span id="currentCode">LU</span><strong id="currentMeridianName">手太阴肺经</strong></div>
-          <div class="meta-stats"><span><b id="pointCount">5</b> 穴位</span><span><b id="fpsValue">60</b> FPS</span></div>
+          <div class="channel-heading"><span id="currentCode">SP</span><strong id="currentMeridianName">足太阴脾经</strong><em id="channelKind" class="polarity-badge yin">阴经</em></div>
+          <div class="meta-stats"><span><b id="pointCount">21</b> 标准经穴</span><span><b id="structuredCount">9</b> 重点穴</span><span><b id="fpsValue">60</b> FPS</span></div>
+        </div>
+
+        <div class="camera-presets glass-min" aria-label="标准视角">
+          <button data-camera="front">正</button><button data-camera="back">背</button><button data-camera="left">左</button><button data-camera="right">右</button>
         </div>
         <div class="view-controls glass-min" aria-label="视角控制">
           <button id="zoomIn" class="control-btn" title="放大">＋</button>
           <button id="zoomOut" class="control-btn" title="缩小">－</button>
           <button id="resetView" class="control-btn" title="正面复位">⌂</button>
+          <button id="xrayView" class="control-btn" title="透视模式">◉</button>
           <button id="lockView" class="control-btn" title="锁定视角">⌁</button>
         </div>
+
         <div id="hoverTooltip" class="hover-tooltip glass" hidden></div>
-        <div class="gesture-hint glass-min"><span>单指旋转 / 左右滑动切换</span><span>双指旋转与捏合缩放</span></div>
+        <div id="pointToast" class="point-toast glass"></div>
+
+        <div class="visual-legend glass-min">
+          <span><i class="yin-line"></i>阴经暗色</span><span><i class="yang-line"></i>阳经亮色</span><span><i class="normal-point"></i>普通穴</span><span><i class="five-point"></i>五行穴</span>
+        </div>
+        <div class="gesture-hint glass-min"><span>拖动旋转 · 滚轮缩放</span><span>双指旋转 · 捏合缩放</span></div>
+
         <div class="timeline glass">
           <div class="transport">
             <button id="prevMeridian" class="round-btn" aria-label="上一条经络">‹</button>
-            <button id="playPause" class="play-btn" aria-label="播放动画">▶</button>
+            <button id="playPause" class="play-btn" aria-label="播放动画">Ⅱ</button>
             <button id="nextMeridian" class="round-btn" aria-label="下一条经络">›</button>
           </div>
           <div class="timeline-main">
             <div class="timeline-head">
-              <div><strong id="animationLabel">气血寻行动画</strong><span id="progressLabel">0%</span></div>
+              <div><strong id="animationLabel">经络循行动画</strong><span id="progressLabel">12%</span></div>
               <div class="mode-switch" id="modeSwitch"><button data-mode="particles" class="active">粒子</button><button data-mode="trace">寻迹</button><button data-mode="pulse">脉冲</button></div>
             </div>
-            <input id="progressRange" type="range" min="0" max="1000" value="0" aria-label="动画进度" />
+            <input id="progressRange" type="range" min="0" max="1000" value="120" aria-label="动画进度" />
           </div>
           <label class="speed-control">速度<select id="speedSelect" aria-label="速度倍率"><option value="0.5">0.5×</option><option value="1" selected>1.0×</option><option value="1.5">1.5×</option><option value="2">2.0×</option></select></label>
         </div>
       </section>
 
-      <aside class="right-panel glass panel-scroll" aria-label="穴位详情">
-        <div class="point-heading">
-          <div><p class="eyebrow">ACUPOINT DETAIL</p><div class="point-title-line"><span id="pointCode" class="code-badge">LU7</span><h2 id="pointName">列缺</h2></div><p id="pointMeridian" class="muted">手太阴肺经 · 络穴</p></div>
-          <button id="favoritePoint" class="favorite-btn" aria-label="收藏穴位">☆</button>
-        </div>
-        <div class="detail-tabs"><button class="detail-tab active" data-tab="overview">定位</button><button class="detail-tab" data-tab="classic">古籍</button><button class="detail-tab" data-tab="pairing">配伍</button></div>
-        <div id="detailContent" class="detail-content"></div>
-        <div class="disclaimer"><strong>医学安全提示</strong><p>本页面仅用于经络穴位知识展示。穴位按压、针刺、艾灸及临床配伍应由具备资质的专业人员辨证实施。</p></div>
+      <aside class="right-panel glass panel-scroll" aria-label="穴位与图层详情">
+        <section id="pointDetailView">
+          <div class="point-heading">
+            <div><p class="eyebrow">ACUPOINT PROPERTIES</p><div class="point-title-line"><span id="pointCode" class="code-badge">SP3</span><h2 id="pointName">太白</h2></div><p id="pointMeridian" class="muted">足太阴脾经 · 输穴 / 原穴</p></div>
+            <button id="favoritePoint" class="favorite-btn" aria-label="收藏穴位">☆</button>
+          </div>
+          <div id="pointPropertyStrip" class="point-property-strip"></div>
+          <div class="detail-tabs"><button class="detail-tab" data-tab="overview">定位</button><button class="detail-tab active" data-tab="attributes">属性</button><button class="detail-tab" data-tab="crossing">交会</button><button class="detail-tab" data-tab="classic">古籍</button></div>
+          <div id="detailContent" class="detail-content"></div>
+        </section>
+
+        <section id="vesselDetailView" hidden>
+          <p class="eyebrow">EXTRAORDINARY VESSEL</p>
+          <div class="point-title-line"><span id="vesselCode" class="code-badge">CHONG</span><h2 id="vesselName">冲脉</h2></div>
+          <div class="detail-card vessel-summary"><p id="vesselSummary"></p></div>
+          <div class="detail-section"><h3>相关八脉交会穴</h3><div id="vesselAssociations" class="property-grid"></div></div>
+          <div class="detail-section"><h3>体内循行边界</h3><div class="detail-card"><p id="vesselInternalNote"></p></div></div>
+        </section>
+
+        <section id="layerDetailView" hidden>
+          <p class="eyebrow">MODEL LAYERS</p><h2>人体透视与脏器</h2>
+          <div id="layerPanelContent"></div>
+        </section>
+
+        <div class="disclaimer"><strong>医学安全提示</strong><p>本页面仅用于经络穴位知识与传统理论的教学展示，不用于诊断、针刺定位或替代专业医疗服务。</p></div>
         <div class="source-links">
           <p class="eyebrow">SOURCES</p>
           <a href="https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=397548AE7248D3D87DD15E0AB8107185&refer=outter" target="_blank" rel="noreferrer">GB/T 12346-2021 经穴名称与定位 ↗</a>
-          <a href="https://apps.who.int/iris/bitstream/handle/10665/353407/9789290613831-eng.pdf?sequence=1&isAllowed=y" target="_blank" rel="noreferrer">WHO/WPRO 361 穴标准 ↗</a>
+          <a href="https://www.who.int/publications/i/item/9290611057" target="_blank" rel="noreferrer">WHO 361 经穴标准命名 ↗</a>
+          <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC2862941/" target="_blank" rel="noreferrer">WHO 标准穴位定位说明 ↗</a>
           <a href="https://ctext.org/huangdi-neijing/jing-mai/zhs" target="_blank" rel="noreferrer">《黄帝内经·灵枢·经脉》↗</a>
         </div>
       </aside>
     </main>
-    <div id="portraitNotice" class="portrait-notice"><div class="rotate-icon">↻</div><strong>横屏体验更完整</strong><span>旋转设备可同时查看模型、分类与穴位详情</span></div>
+
+    <div id="portraitNotice" class="portrait-notice"><div class="rotate-icon">↻</div><strong>横屏体验更完整</strong><span>横屏可同时查看模型、经络索引与穴位属性。</span></div>
   </div>
-  <script src="./app-loader.js" defer></script>
+  <script src="./boot-v2.js" defer></script>
 </body>
 </html>

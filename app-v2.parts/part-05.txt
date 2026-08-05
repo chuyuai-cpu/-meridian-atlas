@@ -1,0 +1,102 @@
+acity * 100)}%</b></span><input id="skinOpacity" type="range" min="0.08" max="1" step="0.01" value="${state.skinOpacity}"></label></section><section class="detail-section"><h3>脏器单独显隐</h3><div class="organ-grid">${organs}</div><p class="layer-note">点击名称显隐，双击聚焦。脏器形态与位置均为教学示意。</p></section><section class="detail-section"><label class="switch-row"><span><strong>显示全部经络</strong><small>关闭后仅显示当前经络</small></span><input type="checkbox" id="showAllChannels" ${state.showAllChannels ? 'checked' : ''}><i></i></label></section>`;
+  $$('[data-layer]').forEach((input) => input.onchange = () => { state.layers[input.dataset.layer] = input.checked; updateLayers(); renderLayerPanel(); saveState(); });
+  $('#skinOpacity').oninput = (event) => { state.skinOpacity = Number(event.target.value); updateLayers(); const value = $('#skinOpacityValue'); if (value) value.textContent = `${Math.round(state.skinOpacity * 100)}%`; saveState(); };
+  $('#showAllChannels').onchange = (event) => { state.showAllChannels = event.target.checked; updateChannelPresentation(); saveState(); };
+  $$('.organ-chip').forEach((button) => {
+    button.onclick = () => {
+      const id = button.dataset.organ;
+      state.organVisibility[id] = state.organVisibility[id] === false;
+      updateLayers();
+      renderLayerPanel();
+      saveState();
+    };
+    button.ondblclick = () => focusOrgan(button.dataset.organ);
+  });
+}
+
+function updateStageMeta() {
+  const channel = activeChannel();
+  $('#currentCode').textContent = channel.code;
+  $('#currentMeridianName').textContent = channel.name;
+  $('#pointCount').textContent = channel.hasOwnPoints ? channel.officialPointCount : 0;
+  $('#structuredCount').textContent = channel.points.length;
+  $('#channelKind').textContent = channel.group === 'primary' ? (channel.polarity === 'yin' ? '阴经' : '阳经') : '奇经';
+  $('#channelKind').className = `polarity-badge ${channel.polarity}`;
+  $('#progressRange').value = Math.round(state.progress * 1000);
+  $('#progressLabel').textContent = `${Math.round(state.progress * 100)}%`;
+  $('#playPause').textContent = state.playing ? 'Ⅱ' : '▶';
+  $('#speedSelect').value = String(state.speed);
+  $('#favoriteCount').textContent = favorites.size;
+  $('#lockView').classList.toggle('active', state.locked);
+  $('#xrayView').classList.toggle('active', state.skinOpacity < 0.4);
+  $$('#modeSwitch button').forEach((button) => button.classList.toggle('active', button.dataset.mode === state.mode));
+  $('#animationLabel').textContent = channel.hasOwnPoints ? '经络循行动画' : '奇经循行参考动画';
+}
+
+function renderUI() {
+  updateStageMeta();
+  renderChannelList($('#searchInput').value);
+  renderPointDetail();
+  updateChannelPresentation();
+  updateLayers();
+  $$('.nav-pill[data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === state.view));
+  $('#favoriteToggle').classList.toggle('active', state.view === 'favorite');
+  $('#leftTitle').textContent = state.view === 'point' ? '穴位索引' : state.view === 'animation' ? '动画模式' : state.view === 'favorite' ? '收藏夹' : state.view === 'layers' ? '经络分类' : '经络分类';
+}
+
+function selectChannel(code, resetProgress = false) {
+  const channel = channelByCode.get(code);
+  if (!channel) return;
+  state.channelCode = code;
+  if (channel.points.length) state.pointCode = channel.points.find((point) => point.code === state.pointCode)?.code || channel.points[0].code;
+  else state.pointCode = null;
+  if (resetProgress) state.progress = 0;
+  cameraTarget.set(0, 0.05, 0);
+  renderUI();
+  saveState();
+}
+function selectPoint(code, side = 'left') {
+  const point = pointByCode.get(code);
+  if (!point) return;
+  state.pointCode = code;
+  state.channelCode = point.channelCode;
+  state.selectedSide = side;
+  state.view = 'point';
+  renderUI();
+  const channel = activeChannel();
+  const position = side === 'right' && channel.bilateral ? mirror(point.position) : point.position;
+  cameraTarget.set(...position);
+  cameraTarget.y = clamp(cameraTarget.y, -1.6, 1.8);
+  state.distance = 5.6;
+  showPointToast(point);
+  saveState();
+}
+function showPointToast(point) {
+  const toast = $('#pointToast');
+  const crossing = point.crossing.length ? ` · 交会：${point.crossing.join('、')}` : '';
+  toast.innerHTML = `<strong>${point.code} ${point.name}</strong><span>${point.categories.join(' / ')}${point.element ? ` · 五行${point.element}` : ''}${crossing}</span>`;
+  toast.classList.add('show');
+  clearTimeout(showPointToast.timer);
+  showPointToast.timer = setTimeout(() => toast.classList.remove('show'), 3800);
+}
+
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+let hoveredObject = null;
+function raycast(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNdc, camera);
+  return raycaster.intersectObjects([...pointObjects, ...[...organObjects.values()]], true).find((hit) => hit.object.userData?.type);
+}
+function showTooltip(hit, event) {
+  const tooltip = $('#hoverTooltip');
+  if (!hit) { tooltip.hidden = true; return; }
+  const data = hit.object.userData;
+  if (data.type === 'point') {
+    const point = data.point;
+    tooltip.innerHTML = `<strong>${point.code} · ${point.name}</strong><span>${point.channelName}</span><em>${point.element ? `五行${point.element} · ` : ''}${point.categories.slice(0,3).join(' / ')}</em>`;
+  } else {
+    const organ = data.organ;
+    tooltip.innerHTML = `<strong

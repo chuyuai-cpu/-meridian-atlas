@@ -1,0 +1,61 @@
+ 'primary' ? '十二正经' : '奇经'} · ${item.hasOwnPoints ? `${item.officialPointCount} 标准经穴 / ${item.points.length} 重点穴` : '无独立编号经穴'}`
+      : `${item.channelName} · ${(item.categories || []).slice(0, 2).join(' / ')}`;
+    button.innerHTML = `<span class="meridian-code" style="--channel:${isChannel ? item.color : pointColor(item)}">${item.code}</span><div><strong>${item.name}</strong><small>${subtitle}</small></div><span class="meridian-arrow">${!isChannel && favorites.has(item.code) ? '★' : '›'}</span>`;
+    button.onclick = () => isChannel ? selectChannel(item.code, true) : selectPoint(item.code);
+    list.append(button);
+  });
+  if (!filtered.length) list.innerHTML = '<div class="empty-state"><strong>没有匹配内容</strong><span>请调整筛选条件或关键词。</span></div>';
+}
+
+function propertyBadge(category) {
+  const kind = category.includes('井') || category.includes('荥') || category.includes('输') || category.includes('经穴') || category.includes('合穴') ? 'five' : category.includes('交会') ? 'cross' : category.includes('募') || category.includes('背俞') ? 'organ' : 'special';
+  return `<span class="property-badge ${kind}">${category}</span>`;
+}
+function renderPointDetail() {
+  const channel = activeChannel();
+  const point = activePoint();
+  const pointView = $('#pointDetailView');
+  const vesselView = $('#vesselDetailView');
+  const layerView = $('#layerDetailView');
+  pointView.hidden = state.view === 'layers' || (!point && !channel.hasOwnPoints);
+  vesselView.hidden = state.view === 'layers' || !!point;
+  layerView.hidden = state.view !== 'layers';
+  if (state.view === 'layers') {
+    renderLayerPanel();
+    return;
+  }
+  if (!point) {
+    $('#vesselCode').textContent = channel.code;
+    $('#vesselName').textContent = channel.name;
+    $('#vesselSummary').textContent = channel.summary;
+    $('#vesselAssociations').innerHTML = (channel.associated || []).map((item) => `<span class="property-badge cross">${item}</span>`).join('');
+    $('#vesselInternalNote').textContent = channel.internalNote;
+    return;
+  }
+  $('#pointCode').textContent = point.code;
+  $('#pointName').textContent = point.name;
+  $('#pointMeridian').textContent = `${point.channelName} · ${(point.categories || []).join(' / ')}`;
+  $('#favoritePoint').textContent = favorites.has(point.code) ? '★' : '☆';
+  $('#favoritePoint').classList.toggle('active', favorites.has(point.code));
+  $('#pointPropertyStrip').innerHTML = `${point.element ? `<span class="element-badge" style="--element:${pointColor(point)}">五行 · ${point.element}</span>` : ''}${point.categories.map(propertyBadge).join('')}`;
+  const content = $('#detailContent');
+  if (state.tab === 'overview') {
+    content.innerHTML = `<section class="detail-section"><h3>标准定位摘要</h3><div class="detail-card"><p>${point.location}</p></div></section><section class="detail-section"><h3>数据边界</h3><div class="detail-card"><p>${DATA.sources.note}</p></div></section>`;
+  } else if (state.tab === 'attributes') {
+    const reminders = point.reminders.length ? point.reminders : [point.element ? `${point.name}为五行${point.element}属性穴位。` : `${point.name}包含 ${(point.categories || []).join('、')} 等属性。`];
+    content.innerHTML = `<section class="detail-section"><h3>穴位特性提醒</h3><div class="feature-reminder">${reminders.map((item) => `<p>${item}</p>`).join('')}</div></section><section class="detail-section"><h3>属性分类</h3><div class="property-grid">${point.categories.map(propertyBadge).join('')}${point.element ? `<span class="property-badge element" style="--element:${pointColor(point)}">五行 ${point.element}</span>` : ''}</div></section>`;
+  } else if (state.tab === 'crossing') {
+    content.innerHTML = point.crossing.length
+      ? `<section class="detail-section"><h3>经络交会提醒</h3><div class="crossing-card"><strong>${point.name}涉及以下经脉/奇经：</strong>${point.crossing.map((item) => `<span>${item}</span>`).join('')}</div></section><section class="detail-section"><div class="detail-card"><p>交会关系以传统针灸学分类作知识索引；体内空间路径为示意表达。</p></div></section>`
+      : `<section class="detail-section"><h3>经络交会提醒</h3><div class="detail-card"><p>当前结构化资料中未标注该穴的交会经脉。</p></div></section>`;
+  } else {
+    content.innerHTML = `<section class="detail-section"><h3>传统理论索引</h3><div class="detail-card"><p>${point.traditional.length ? point.traditional.join('；') : '当前版本保留名称、归经、特定穴属性与交会关系；古籍逐条校勘将在后续数据校订中继续扩充。'}</p></div></section><section class="detail-section"><h3>来源</h3><div class="detail-card"><p>${DATA.sources.national}<br>${DATA.sources.whoLocation}<br>${DATA.sources.classic}</p></div></section>`;
+  }
+}
+
+function renderLayerPanel() {
+  const container = $('#layerPanelContent');
+  const layerNames = { skin:'皮肤模型', skeleton:'骨骼结构', organs:'五脏六腑', meridians:'经络路径', points:'穴位标记', internal:'体内循行参考' };
+  const layerRows = Object.entries(layerNames).map(([key, name]) => `<label class="switch-row"><span><strong>${name}</strong><small>${key === 'internal' ? '存在多种解释，仅供参考' : '点击控制图层显隐'}</small></span><input type="checkbox" data-layer="${key}" ${state.layers[key] ? 'checked' : ''}><i></i></label>`).join('');
+  const organs = DATA.organs.map((organ) => `<button class="organ-chip ${state.organVisibility[organ.id] === false ? 'off' : ''}" data-organ="${organ.id}" style="--organ:${organ.color}"><span></span>${organ.name}</button>`).join('');
+  container.innerHTML = `<section class="detail-section"><h3>模型图层</h3><div class="switch-list">${layerRows}</div></section><section class="detail-section"><h3>皮肤透视</h3><label class="opacity-control"><span>不透明度 <b id="skinOpacityValue">${Math.round(state.skinOp

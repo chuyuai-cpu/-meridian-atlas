@@ -1,0 +1,110 @@
+>${organ.name}</strong><span>${organ.type} · 教学示意</span><em>${organ.note}</em>`;
+  }
+  const rect = stage.getBoundingClientRect();
+  tooltip.style.left = `${clamp(event.clientX - rect.left + 12, 10, rect.width - 240)}px`;
+  tooltip.style.top = `${clamp(event.clientY - rect.top + 12, 10, rect.height - 120)}px`;
+  tooltip.hidden = false;
+}
+
+let pointers = new Map();
+let dragStart = null;
+let pinchStart = null;
+let dragged = false;
+canvas.addEventListener('pointerdown', (event) => {
+  canvas.setPointerCapture(event.pointerId);
+  pointers.set(event.pointerId, [event.clientX, event.clientY]);
+  dragStart = [event.clientX, event.clientY, performance.now()];
+  dragged = false;
+  if (pointers.size === 2) {
+    const values = [...pointers.values()];
+    pinchStart = {
+      distance: Math.hypot(values[1][0] - values[0][0], values[1][1] - values[0][1]),
+      angle: Math.atan2(values[1][1] - values[0][1], values[1][0] - values[0][0])
+    };
+  }
+});
+canvas.addEventListener('pointermove', (event) => {
+  const previous = pointers.get(event.pointerId);
+  if (!previous) {
+    const hit = raycast(event);
+    if (hoveredObject && hoveredObject !== hit?.object && hoveredObject.material?.emissiveIntensity !== undefined) hoveredObject.material.emissiveIntensity *= 0.65;
+    hoveredObject = hit?.object || null;
+    if (hoveredObject?.material?.emissiveIntensity !== undefined) hoveredObject.material.emissiveIntensity = Math.max(1.6, hoveredObject.material.emissiveIntensity);
+    showTooltip(hit, event);
+    return;
+  }
+  pointers.set(event.pointerId, [event.clientX, event.clientY]);
+  if (state.locked) return;
+  if (pointers.size === 1) {
+    const dx = event.clientX - previous[0];
+    const dy = event.clientY - previous[1];
+    if (Math.hypot(dx, dy) > 1.5) dragged = true;
+    state.yaw -= dx * 0.0075;
+    state.pitch = clamp(state.pitch - dy * 0.0055, -0.78, 0.78);
+  } else if (pointers.size === 2) {
+    const values = [...pointers.values()];
+    const distance = Math.hypot(values[1][0] - values[0][0], values[1][1] - values[0][1]);
+    const angle = Math.atan2(values[1][1] - values[0][1], values[1][0] - values[0][0]);
+    if (pinchStart) {
+      state.distance = clamp(state.distance * pinchStart.distance / Math.max(distance, 1), 3.2, 13);
+      state.yaw += angle - pinchStart.angle;
+      dragged = true;
+    }
+    pinchStart = { distance, angle };
+  }
+});
+canvas.addEventListener('pointerup', (event) => {
+  const start = dragStart;
+  pointers.delete(event.pointerId);
+  pinchStart = null;
+  if (start && !dragged && Math.hypot(event.clientX - start[0], event.clientY - start[1]) < 10) {
+    const hit = raycast(event);
+    if (hit?.object.userData?.type === 'point') selectPoint(hit.object.userData.point.code, hit.object.userData.side);
+    if (hit?.object.userData?.type === 'organ') {
+      state.view = 'layers';
+      focusOrgan(hit.object.userData.organ.id);
+      renderUI();
+    }
+  }
+  if (start && dragged && pointers.size === 0) saveState();
+  dragStart = null;
+});
+canvas.addEventListener('pointercancel', (event) => { pointers.delete(event.pointerId); pinchStart = null; });
+canvas.addEventListener('wheel', (event) => {
+  if (state.locked) return;
+  event.preventDefault();
+  state.distance = clamp(state.distance * (1 + Math.sign(event.deltaY) * 0.08), 3.2, 13);
+}, { passive: false });
+canvas.addEventListener('mouseleave', () => showTooltip(null));
+
+function bindUI() {
+  $('#playPause').onclick = () => { state.playing = !state.playing; renderUI(); saveState(); };
+  $('#prevMeridian').onclick = () => {
+    const index = DATA.channels.findIndex((channel) => channel.code === state.channelCode);
+    selectChannel(DATA.channels[(index - 1 + DATA.channels.length) % DATA.channels.length].code, true);
+  };
+  $('#nextMeridian').onclick = () => {
+    const index = DATA.channels.findIndex((channel) => channel.code === state.channelCode);
+    selectChannel(DATA.channels[(index + 1) % DATA.channels.length].code, true);
+  };
+  $('#progressRange').oninput = (event) => { state.progress = Number(event.target.value) / 1000; state.playing = false; updateStageMeta(); saveState(); };
+  $('#speedSelect').onchange = (event) => { state.speed = Number(event.target.value); saveState(); };
+  $('#zoomIn').onclick = () => { state.distance = clamp(state.distance * 0.86, 3.2, 13); };
+  $('#zoomOut').onclick = () => { state.distance = clamp(state.distance * 1.14, 3.2, 13); };
+  $('#resetView').onclick = () => { cameraTarget.set(0, 0.1, 0); focusView('front'); };
+  $('#lockView').onclick = () => { state.locked = !state.locked; updateStageMeta(); saveState(); };
+  $('#xrayView').onclick = () => { state.skinOpacity = state.skinOpacity < 0.4 ? 0.82 : 0.18; state.layers.organs = true; updateLayers(); renderUI(); saveState(); };
+  $$('[data-camera]').forEach((button) => button.onclick = () => focusView(button.dataset.camera));
+  $('#favoritePoint').onclick = () => {
+    const point = activePoint();
+    if (!point) return;
+    favorites.has(point.code) ? favorites.delete(point.code) : favorites.add(point.code);
+    renderUI();
+    saveState();
+  };
+  $('#favoriteToggle').onclick = () => { state.view = 'favorite'; renderUI(); };
+  $('#searchInput').oninput = (event) => renderChannelList(event.target.value);
+  $('#collapseLeft').onclick = () => { $('.left-panel').classList.toggle('collapsed'); $('.workspace').classList.toggle('left-collapsed'); };
+  $$('.filter-chip').forEach((button) => button.onclick = () => {
+    state.filter = button.dataset.filter;
+    $

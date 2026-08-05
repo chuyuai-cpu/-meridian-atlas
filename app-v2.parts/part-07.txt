@@ -1,0 +1,87 @@
+$('.filter-chip').forEach((item) => item.classList.toggle('active', item === button));
+    renderChannelList($('#searchInput').value);
+  });
+  $$('.detail-tab').forEach((button) => button.onclick = () => {
+    state.tab = button.dataset.tab;
+    $$('.detail-tab').forEach((item) => item.classList.toggle('active', item === button));
+    renderPointDetail();
+    saveState();
+  });
+  $$('#modeSwitch button').forEach((button) => button.onclick = () => { state.mode = button.dataset.mode; renderUI(); saveState(); });
+  $$('.nav-pill[data-view]').forEach((button) => button.onclick = () => { state.view = button.dataset.view; renderUI(); saveState(); });
+}
+bindUI();
+
+function updateAnimation(delta, elapsed) {
+  const channel = activeChannel();
+  const curve = channelCurves.get(channel.code);
+  if (!curve) return;
+  if (state.playing) state.progress = (state.progress + delta * 0.075 * state.speed) % 1;
+  const sampleCount = 180;
+  const traceCount = Math.max(2, Math.floor(sampleCount * state.progress));
+  const tracePoints = [];
+  for (let i = 0; i < traceCount; i += 1) tracePoints.push(curve.getPoint(i / (sampleCount - 1)));
+  traceGeometry.setFromPoints(tracePoints);
+  traceLine.visible = state.layers.meridians && state.mode === 'trace';
+  traceMaterial.opacity = 0.72 + Math.sin(elapsed * 4) * 0.20;
+
+  particles.forEach((particle, index) => {
+    const offset = state.mode === 'particles' ? index / particles.length * 0.58 : index / particles.length * 0.22;
+    const t = (state.progress - offset + 1) % 1;
+    particle.position.copy(curve.getPointAt(t));
+    const pulse = 0.72 + 0.42 * Math.sin(elapsed * 5.5 + index * 0.42);
+    particle.scale.setScalar(state.mode === 'pulse' ? pulse * 1.5 : 0.72 + (index % 5) * 0.07);
+    particle.material.opacity = state.mode === 'trace' ? 0.0 : state.mode === 'pulse' ? 0.38 + pulse * 0.42 : 0.82;
+    particle.visible = state.layers.meridians && state.mode !== 'trace';
+  });
+  const selected = channelObjects.get(channel.code);
+  if (selected) selected.entries.forEach(({ material }) => {
+    if (state.mode === 'pulse') material.opacity = 0.62 + Math.sin(elapsed * 4.3) * 0.25;
+  });
+  if (selectedPointHalo) {
+    selectedPointHalo.lookAt(camera.position);
+    selectedPointHalo.scale.setScalar(1 + Math.sin(elapsed * 4.5) * 0.16);
+  }
+  $('#progressRange').value = Math.round(state.progress * 1000);
+  $('#progressLabel').textContent = `${Math.round(state.progress * 100)}%`;
+}
+
+let lastTime = performance.now();
+let fpsSamples = [];
+function resizeRenderer() {
+  const rect = stage.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
+  if (renderer.domElement.width !== Math.floor(width * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(height * renderer.getPixelRatio())) {
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+}
+function animate(now) {
+  requestAnimationFrame(animate);
+  const delta = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  const elapsed = now / 1000;
+  resizeRenderer();
+  const cosPitch = Math.cos(state.pitch);
+  camera.position.set(
+    cameraTarget.x + Math.sin(state.yaw) * cosPitch * state.distance,
+    cameraTarget.y + Math.sin(state.pitch) * state.distance,
+    cameraTarget.z + Math.cos(state.yaw) * cosPitch * state.distance
+  );
+  camera.lookAt(cameraTarget);
+  updateAnimation(delta, elapsed);
+  renderer.render(scene, camera);
+  fpsSamples.push(1 / Math.max(delta, 0.001));
+  if (fpsSamples.length > 30) fpsSamples.shift();
+  if (fpsSamples.length === 30) $('#fpsValue').textContent = Math.min(99, Math.round(fpsSamples.reduce((sum, item) => sum + item, 0) / fpsSamples.length));
+}
+
+window.addEventListener('resize', resizeRenderer);
+window.addEventListener('beforeunload', saveState);
+renderUI();
+updateLayers();
+resizeRenderer();
+requestAnimationFrame(animate);
+window.__MERIDIAN_ATLAS_V2_READY__ = true;

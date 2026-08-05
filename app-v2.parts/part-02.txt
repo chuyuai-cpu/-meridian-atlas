@@ -1,0 +1,127 @@
+I * 5) * 0.35,
+          -0.28 + (t - 0.5) * 0.55,
+          0.18 + Math.cos(t * Math.PI * 4) * 0.06
+        ));
+      }
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 120, 0.045, 10, false), material));
+    } else if (organ.frameTube) {
+      const frame = [
+        [-0.52,-0.50,0.14],[-0.54,0.05,0.14],[-0.42,0.33,0.14],[0.42,0.33,0.14],[0.54,0.05,0.14],[0.52,-0.50,0.14],[0,-0.58,0.14]
+      ].map(vector);
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(frame), 100, 0.055, 10, false), material));
+    } else if (organ.bilateral) {
+      for (const side of [-1, 1]) {
+        const position = [...organ.position];
+        if (organ.id === 'lung') position[0] = side * 0.30;
+        if (organ.id === 'kidney') position[0] = side * 0.28;
+        const mesh = ellipsoid(position, organ.scale, material, group, 32);
+        mesh.userData = { type: 'organ', organ };
+      }
+    } else {
+      const mesh = ellipsoid(organ.position, organ.scale, material, group, 32);
+      mesh.userData = { type: 'organ', organ };
+    }
+    group.traverse((object) => {
+      if (object.isMesh) {
+        object.castShadow = false;
+        object.renderOrder = 1;
+        object.userData = { type: 'organ', organ };
+      }
+    });
+    organGroup.add(group);
+    organObjects.set(organ.id, group);
+  });
+}
+buildOrgans();
+
+const channelObjects = new Map();
+const channelCurves = new Map();
+const pointObjects = [];
+let selectedPointHalo = null;
+
+function pointsForPath(path, side = 'left') {
+  const source = side === 'right' ? path.map(mirror) : path;
+  return source.map(vector);
+}
+function makeTube(path, color, radius, opacity, closed = false) {
+  const curve = new THREE.CatmullRomCurve3(path, closed, 'catmullrom', 0.35);
+  const geometry = new THREE.TubeGeometry(curve, Math.max(48, path.length * 18), radius, 8, closed);
+  const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.renderOrder = 4;
+  return { mesh, curve, material };
+}
+function makeInternalLine(path, color) {
+  const geometry = new THREE.BufferGeometry().setFromPoints(path);
+  const material = new THREE.LineDashedMaterial({ color, dashSize: 0.10, gapSize: 0.07, transparent: true, opacity: 0.72, depthWrite: false });
+  const line = new THREE.Line(geometry, material);
+  line.computeLineDistances();
+  line.renderOrder = 3;
+  return line;
+}
+function pointColor(point) {
+  return DATA.elementColors[point.element || '普通'];
+}
+function buildChannels() {
+  DATA.channels.forEach((channel) => {
+    const group = new THREE.Group();
+    const internal = new THREE.Group();
+    const entries = [];
+    const sides = channel.bilateral ? ['left', 'right'] : ['center'];
+    sides.forEach((side) => {
+      const basePath = side === 'right' ? channel.path.map(mirror) : channel.path;
+      const path = basePath.map(vector);
+      const tube = makeTube(path, channel.color, 0.018, 0.28, !!channel.loop);
+      tube.mesh.userData = { type: 'channel', channel, side };
+      group.add(tube.mesh);
+      entries.push({ ...tube, side });
+      if (!channelCurves.has(channel.code) || side === 'left' || side === 'center') channelCurves.set(channel.code, tube.curve);
+
+      if (channel.secondaryPath) {
+        const secondary = (side === 'right' ? channel.secondaryPath.map(mirror) : channel.secondaryPath).map(vector);
+        const secondTube = makeTube(secondary, channel.color, 0.013, 0.19, false);
+        secondTube.mesh.userData = { type: 'channel', channel, side };
+        group.add(secondTube.mesh);
+        entries.push({ ...secondTube, side, secondary: true });
+      }
+      if (channel.internalPath) {
+        const internalPath = (side === 'right' ? channel.internalPath.map(mirror) : channel.internalPath).map(vector);
+        internal.add(makeInternalLine(internalPath, channel.color));
+      }
+    });
+    channelGroup.add(group);
+    internalGroup.add(internal);
+    channelObjects.set(channel.code, { channel, group, internal, entries });
+
+    channel.points.forEach((point) => {
+      const markerSides = channel.bilateral ? ['left', 'right'] : ['center'];
+      markerSides.forEach((side) => {
+        const position = side === 'right' ? mirror(point.position) : point.position;
+        const material = new THREE.MeshStandardMaterial({
+          color: pointColor(point),
+          emissive: pointColor(point),
+          emissiveIntensity: point.element ? 1.2 : 0.72,
+          roughness: 0.38,
+          transparent: true,
+          opacity: 0.94,
+          depthWrite: false
+        });
+        const radius = point.categories.some((category) => ['原穴','络穴','郗穴','募穴','背俞穴','交会穴','八脉交会穴'].some((key) => category.includes(key))) ? 0.062 : 0.052;
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 18, 12), material);
+        mesh.position.set(...position);
+        mesh.userData = { type: 'point', point, channel, side };
+        mesh.renderOrder = 7;
+        pointGroup.add(mesh);
+        pointObjects.push(mesh);
+      });
+    });
+  });
+}
+buildChannels();
+
+const traceGeometry = new THREE.BufferGeometry();
+const traceMaterial = new THREE.LineBasicMaterial({ color: '#d8fff0', transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+const traceLine = new THREE.Line(traceGeometry, traceMaterial);
+traceLine.renderOrder = 9;
+highlightGroup.add(traceLine);
+const 

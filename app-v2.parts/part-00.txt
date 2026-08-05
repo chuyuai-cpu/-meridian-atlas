@@ -1,0 +1,153 @@
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js';
+import { DATA } from './data-v2.js';
+
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const mirror = ([x, y, z]) => [-x, y, z];
+const vector = (array) => new THREE.Vector3(...array);
+
+const pointByCode = new Map();
+DATA.channels.forEach((channel) => {
+  channel.points.forEach((point) => {
+    point.channelCode = channel.code;
+    point.channelName = channel.name;
+    point.channelPolarity = channel.polarity;
+    pointByCode.set(point.code, point);
+  });
+});
+const structuredPoints = [...pointByCode.values()];
+
+const defaultState = {
+  channelCode: 'SP',
+  pointCode: 'SP3',
+  view: 'meridian',
+  filter: 'all',
+  tab: 'attributes',
+  mode: 'particles',
+  progress: 0.12,
+  playing: true,
+  speed: 1,
+  yaw: 0,
+  pitch: 0.05,
+  distance: 8.4,
+  locked: false,
+  showAllChannels: true,
+  skinOpacity: 0.82,
+  layers: { skin: true, skeleton: false, organs: true, meridians: true, points: true, internal: false },
+  organVisibility: Object.fromEntries(DATA.organs.map((organ) => [organ.id, true])),
+  favorites: [],
+  selectedSide: 'left'
+};
+let state = structuredClone(defaultState);
+try {
+  const saved = JSON.parse(localStorage.getItem('meridian-atlas-v2-state') || 'null');
+  if (saved) {
+    state = {
+      ...state,
+      ...saved,
+      layers: { ...state.layers, ...(saved.layers || {}) },
+      organVisibility: { ...state.organVisibility, ...(saved.organVisibility || {}) }
+    };
+  }
+} catch (error) {
+  console.warn('Unable to restore saved state', error);
+}
+const favorites = new Set(state.favorites || []);
+const saveState = () => {
+  try {
+    localStorage.setItem('meridian-atlas-v2-state', JSON.stringify({ ...state, favorites: [...favorites] }));
+  } catch (error) {
+    console.warn('Unable to save state', error);
+  }
+};
+
+const channelByCode = new Map(DATA.channels.map((channel) => [channel.code, channel]));
+const activeChannel = () => channelByCode.get(state.channelCode) || DATA.channels[0];
+const activePoint = () => pointByCode.get(state.pointCode) || activeChannel().points[0] || null;
+
+const canvas = $('#glCanvas');
+const stage = $('#stage');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#07100d');
+scene.fog = new THREE.FogExp2('#07100d', 0.055);
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+} catch (error) {
+  throw new Error(`WebGLRenderer 创建失败：${error.message}`);
+}
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 900 ? 1.25 : 1.7));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const camera = new THREE.PerspectiveCamera(34, 1, 0.05, 80);
+const cameraTarget = new THREE.Vector3(0, 0.1, 0);
+
+scene.add(new THREE.HemisphereLight('#c8e7d8', '#1b241e', 1.45));
+const keyLight = new THREE.DirectionalLight('#fff4df', 3.1);
+keyLight.position.set(4, 6, 6);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(1024, 1024);
+scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight('#69bca2', 2.2);
+rimLight.position.set(-4, 3, -5);
+scene.add(rimLight);
+const fillLight = new THREE.PointLight('#8ca8ff', 10, 18, 2);
+fillLight.position.set(0, 0, 5);
+scene.add(fillLight);
+
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(3.8, 96),
+  new THREE.MeshStandardMaterial({ color: '#0b1713', roughness: 0.95, metalness: 0, transparent: true, opacity: 0.72 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -3.28;
+floor.receiveShadow = true;
+scene.add(floor);
+const floorRing = new THREE.Mesh(
+  new THREE.RingGeometry(2.5, 2.56, 96),
+  new THREE.MeshBasicMaterial({ color: '#385d50', transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+);
+floorRing.rotation.x = -Math.PI / 2;
+floorRing.position.y = -3.265;
+scene.add(floorRing);
+
+const root = new THREE.Group();
+scene.add(root);
+const skinGroup = new THREE.Group();
+const skeletonGroup = new THREE.Group();
+const organGroup = new THREE.Group();
+const channelGroup = new THREE.Group();
+const internalGroup = new THREE.Group();
+const pointGroup = new THREE.Group();
+const particleGroup = new THREE.Group();
+const highlightGroup = new THREE.Group();
+root.add(skinGroup, skeletonGroup, organGroup, channelGroup, internalGroup, pointGroup, particleGroup, highlightGroup);
+
+const skinMaterial = new THREE.MeshPhysicalMaterial({
+  color: '#c79172',
+  roughness: 0.68,
+  metalness: 0,
+  clearcoat: 0.08,
+  clearcoatRoughness: 0.8,
+  transparent: true,
+  opacity: state.skinOpacity,
+  side: THREE.DoubleSide,
+  depthWrite: true
+});
+const skinDarkMaterial = skinMaterial.clone();
+skinDarkMaterial.color.set('#9f6e58');
+const faceDetailMaterial = new THREE.MeshStandardMaterial({ color: '#241a18', roughness: 0.85 });
+const boneMaterial = new THREE.MeshStandardMaterial({ color: '#d9d1bd', roughness: 0.78, transparent: true, opacity: 0.92 });
+
+function alignBetween(object, start, end) {
+  const a = vector(start);
+  const b = vector(end);
+  const direction = b.clone().sub(a);
+  object.position.copy(a.clone().add(b).multiplyScalar(0.5));
+  object.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().norm
